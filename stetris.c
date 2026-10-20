@@ -11,6 +11,8 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/fb.h>
+#include <sys/mman.h>
+#include <stdint.h>
 
 // The game state can be used to detect what happens on the playfield
 #define GAMEOVER 0
@@ -64,6 +66,9 @@ gameConfig game = {
 
 // File descriptor of the Sense Hat LED matrix framebuffer, -1 when not open
 static int fbFd = -1;
+// Global variables to keep information from the initializeSenseHat()
+static uint16_t *rpiSenseMem = NULL;
+static size_t rpiSenseMemSize = 0;
 
 // This function is called on the start of your application
 // Here you can initialize what ever you need for your task
@@ -77,19 +82,19 @@ bool initializeSenseHat()
     for (int i = 0; i < 32; i++)
     {
         // Made a snprintf() to loop over the different /devs on the pi
-        // I have learned that snprintf() is safer that sprintf() for these
+        // I have learned that snprintf() is safer than sprintf() for these
         // kinds of looping.
         snprintf(path, sizeof(path), "/dev/fb%d", i);
         int fd = open(path, O_RDWR);
         if (fd < 0) { 
-            fprintf(stderr, "could not open %s",path);
+            
             continue;
         }
         // Passes the file descriptor handle to I/O Control to compare the device ID to the rpi frambuffer ID
         if (ioctl(fd, FBIOGET_FSCREENINFO, &screenInfo) == 0 &&
             strcmp(screenInfo.id, "RPi-Sense FB") == 0)
         {
-            // Success!
+            // Success! Framebuffer was found.
             fbFd = fd; 
             break;
         }
@@ -103,6 +108,24 @@ bool initializeSenseHat()
         return false;
     }
 
+    // After the Framebuffer is found, extract parameters and map its memory.
+
+    rpiSenseMemSize = screenInfo.smem_len;
+    // memory maps from compilers choice of starting point, for MemSize, RW-permissions, 
+    // Share not copy (write directly), filedescriptor, offset=0
+    rpiSenseMem = mmap(NULL, rpiSenseMemSize, PROT_READ | PROT_WRITE, MAP_SHARED, fbFd,0);
+
+    // printing error message if mmap() fails
+    if (rpiSenseMem == MAP_FAILED){
+
+        perror("Could not mmap framebuffer");
+        rpiSenseMem = NULL;
+        close(fbFd);
+        fbFd = -1;
+        return false;
+    }
+
+    memset(rpiSenseMem,0xFF,rpiSenseMemSize); //Led Test
     return true;
 }
 
@@ -110,8 +133,13 @@ bool initializeSenseHat()
 // Here you can free up everything that you might have opened/allocated
 void freeSenseHat()
 {
+    if (rpiSenseMem != NULL){
+        memset(rpiSenseMem,0,rpiSenseMemSize);
+        munmap(rpiSenseMem,rpiSenseMemSize);
+        rpiSenseMem = NULL;
+    }
     if (fbFd >= 0)
-    {
+    {   
         close(fbFd);
         fbFd = -1;
     }
