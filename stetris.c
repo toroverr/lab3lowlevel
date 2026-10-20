@@ -8,6 +8,9 @@
 #include <string.h>
 #include <time.h>
 #include <poll.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <linux/fb.h>
 
 // The game state can be used to detect what happens on the playfield
 #define GAMEOVER 0
@@ -59,11 +62,47 @@ gameConfig game = {
     .initNextGameTick = 50,
 };
 
+// File descriptor of the Sense Hat LED matrix framebuffer, -1 when not open
+static int fbFd = -1;
+
 // This function is called on the start of your application
 // Here you can initialize what ever you need for your task
 // return false if something fails, else true
 bool initializeSenseHat()
 {
+    // The framebuffer number is not fixed, so try /dev/fb0, /dev/fb1, ...
+    // and keep the one that identifies itself as the Sense Hat LED matrix
+    struct fb_fix_screeninfo screenInfo;
+    char path[32];
+    for (int i = 0; i < 32; i++)
+    {
+        // Made a snprintf() to loop over the different /devs on the pi
+        // I have learned that snprintf() is safer that sprintf() for these
+        // kinds of looping.
+        snprintf(path, sizeof(path), "/dev/fb%d", i);
+        int fd = open(path, O_RDWR);
+        if (fd < 0) { 
+            fprintf(stderr, "could not open %s",path);
+            continue;
+        }
+        // Passes the file descriptor handle to I/O Control to compare the device ID to the rpi frambuffer ID
+        if (ioctl(fd, FBIOGET_FSCREENINFO, &screenInfo) == 0 &&
+            strcmp(screenInfo.id, "RPi-Sense FB") == 0)
+        {
+            // Success!
+            fbFd = fd; 
+            break;
+        }
+        // failure, not the Rpi framebuffer, closing framebuffer for tidyness
+        close(fd); 
+    }
+    // Prints this statement if the /dev is looped through without success
+    if (fbFd < 0)
+    {
+        fprintf(stderr, "ERROR: could not find framebuffer 'RPi-Sense FB'\n");
+        return false;
+    }
+
     return true;
 }
 
@@ -71,6 +110,11 @@ bool initializeSenseHat()
 // Here you can free up everything that you might have opened/allocated
 void freeSenseHat()
 {
+    if (fbFd >= 0)
+    {
+        close(fbFd);
+        fbFd = -1;
+    }
 }
 
 // This function should return the key that corresponds to the joystick press
@@ -80,6 +124,8 @@ void freeSenseHat()
 // !!! when nothing was pressed you MUST return 0 !!!
 int readSenseHatJoystick()
 {
+    // switch-case
+
     return 0;
 }
 
