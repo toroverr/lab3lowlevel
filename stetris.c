@@ -125,7 +125,7 @@ bool initializeSenseHat()
         return false;
     }
 
-    memset(rpiSenseMem,0xFF,rpiSenseMemSize); //Led Test
+    memset(rpiSenseMem,0x0FF,rpiSenseMemSize); //Led Test
     return true;
 }
 
