@@ -203,9 +203,19 @@ void freeSenseHat()
 // !!! when nothing was pressed you MUST return 0 !!!
 int readSenseHatJoystick()
 {
-    // kan sikkert bruke switch-case
+    // sjekk type OG verdi av event - keyPress
+    struct input_event keyPress;
+    int key = 0;
 
-    return 0;
+    if(read(joystickFd,&keyPress, sizeof(keyPress)) == sizeof(keyPress)) {
+        
+        key = keyPress.code;
+        return key;
+    }
+    else{
+        return 0;
+    }
+    
 }
 
 // This function should render the gamefield on the LED matrix. It is called
@@ -213,6 +223,8 @@ int readSenseHatJoystick()
 // has changed the playfield
 void renderSenseHatMatrix(bool const playfieldChanged)
 {
+    // lag en color struct og incrementer gjennom ettersom formene plasseres
+    // 5 farger er sikkert nok
     (void)playfieldChanged;
 }
 
