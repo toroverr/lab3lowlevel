@@ -69,6 +69,8 @@ static int fbFd = -1;
 // Global variables to keep information from the initializeSenseHat()
 static uint16_t *rpiSenseMem = NULL;
 static size_t rpiSenseMemSize = 0;
+// File descriptor of the Sense Hat joystick input device, -1 when not open
+static int joystickFd = -1;
 
 // This function is called on the start of your application
 // Here you can initialize what ever you need for your task
@@ -85,21 +87,24 @@ bool initializeSenseHat()
         // I have learned that snprintf() is safer than sprintf() for these
         // kinds of looping.
         snprintf(path, sizeof(path), "/dev/fb%d", i);
-        int fd = open(path, O_RDWR);
-        if (fd < 0) { 
+
+        int framebufferFd = open(path, O_RDWR);
+
+        if (framebufferFd < 0) { 
             
             continue;
+
         }
         // Passes the file descriptor handle to I/O Control to compare the device ID to the rpi frambuffer ID
-        if (ioctl(fd, FBIOGET_FSCREENINFO, &screenInfo) == 0 &&
+        if (ioctl(framebufferFd, FBIOGET_FSCREENINFO, &screenInfo) == 0 &&
             strcmp(screenInfo.id, "RPi-Sense FB") == 0)
         {
             // Success! Framebuffer was found.
-            fbFd = fd; 
+            fbFd = framebufferFd; 
             break;
         }
         // failure, not the Rpi framebuffer, closing framebuffer for tidyness
-        close(fd); 
+        close(framebufferFd); 
     }
     // Prints this statement if the /dev is looped through without success
     if (fbFd < 0)
@@ -125,7 +130,48 @@ bool initializeSenseHat()
         return false;
     }
 
-    memset(rpiSenseMem,0x0FF,rpiSenseMemSize); //Led Test
+
+
+    //memset(rpiSenseMem,0x0FF,rpiSenseMemSize); //Led Test
+
+    // The joystick event number is not fixed either, so try /dev/input/event0, /dev/input/event1, ...
+    // and keep the one that identifies itself as the Sense Hat joystick
+    char name[32];
+    for (int i = 0; i < 32; i++)
+    {
+        // Same snprintf() approach as for the framebuffer, now in /dev/input
+        snprintf(path, sizeof(path), "/dev/input/event%d", i);
+        // Read only, and non-blocking so read() never stalls the game when nothing is pressed
+        int joystickFd = open(path, O_RDONLY | O_NONBLOCK);
+
+        if (joystickFd < 0) {
+            continue;
+        }
+        // Clears the name buffer so it is always null terminated for strcmp()
+        memset(name, 0, sizeof(name));
+        // Asks I/O Control for the device name and compares it to the joystick name
+        if (ioctl(joystickFd, EVIOCGNAME(sizeof(name) - 1), name) >= 0 &&
+            strcmp(name, "Raspberry Pi Sense HAT Joystick") == 0)
+        {
+            // Success! Joystick was found.
+            joystickFd = joystickFd;
+            break;
+        }
+        // failure, not the joystick, closing input device for tidiness
+        close(joystickFd);
+    }
+    // Prints this statement if /dev/input is looped through without success
+    if (joystickFd < 0)
+    {
+        fprintf(stderr, "ERROR: could not find input device 'Raspberry Pi Sense HAT Joystick'\n");
+        // The framebuffer is already mapped and open, so release it before failing
+        munmap(rpiSenseMem, rpiSenseMemSize);
+        rpiSenseMem = NULL;
+        close(fbFd);
+        fbFd = -1;
+        return false;
+    }
+
     return true;
 }
 
@@ -143,6 +189,11 @@ void freeSenseHat()
         close(fbFd);
         fbFd = -1;
     }
+    if (joystickFd >= 0)
+    {
+        close(joystickFd);
+        joystickFd = -1;
+    }
 }
 
 // This function should return the key that corresponds to the joystick press
@@ -152,7 +203,7 @@ void freeSenseHat()
 // !!! when nothing was pressed you MUST return 0 !!!
 int readSenseHatJoystick()
 {
-    // switch-case
+    // kan sikkert bruke switch-case
 
     return 0;
 }
