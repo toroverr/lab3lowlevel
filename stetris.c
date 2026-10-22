@@ -23,10 +23,18 @@
 
 // If you extend this structure, either avoid pointers or adjust
 // the game logic allocate/deallocate and reset the memory
+
 typedef struct
 {
     bool occupied;
+    uint16_t colour;
+    
 } tile;
+
+// Colour array for use in Tile.colour assignment later
+// {Red, Green, Blue, Yellow, Cyan, Magneta}
+static const uint16_t colours[6] = {0xF800,0x07E0,0x001F,0xFFE0,0x07FF,0xF81F};
+static unsigned int colourIndex = 0;
 
 typedef struct
 {
@@ -134,31 +142,33 @@ bool initializeSenseHat()
 
     //memset(rpiSenseMem,0x0FF,rpiSenseMemSize); //Led Test
 
-    // The joystick event number is not fixed either, so try /dev/input/event0, /dev/input/event1, ...
+    // The joystick event number is not fixed either, so try /dev/input/event0, /dev/input/event1, ...    
     // and keep the one that identifies itself as the Sense Hat joystick
-    char name[32];
+
+    // name given more space to avoid off-by-one error
+    char name[256];
     for (int i = 0; i < 32; i++)
     {
         // Same snprintf() approach as for the framebuffer, now in /dev/input
         snprintf(path, sizeof(path), "/dev/input/event%d", i);
         // Read only, and non-blocking so read() never stalls the game when nothing is pressed
-        int joystickFd = open(path, O_RDONLY | O_NONBLOCK);
+        int inputFd = open(path, O_RDONLY | O_NONBLOCK);
 
-        if (joystickFd < 0) {
+        if (inputFd < 0) {
             continue;
         }
         // Clears the name buffer so it is always null terminated for strcmp()
         memset(name, 0, sizeof(name));
         // Asks I/O Control for the device name and compares it to the joystick name
-        if (ioctl(joystickFd, EVIOCGNAME(sizeof(name) - 1), name) >= 0 &&
+        if (ioctl(inputFd, EVIOCGNAME(sizeof(name) - 1), name) >= 0 &&
             strcmp(name, "Raspberry Pi Sense HAT Joystick") == 0)
         {
             // Success! Joystick was found.
-            joystickFd = joystickFd;
+            joystickFd = inputFd;
             break;
         }
         // failure, not the joystick, closing input device for tidiness
-        close(joystickFd);
+        close(inputFd);
     }
     // Prints this statement if /dev/input is looped through without success
     if (joystickFd < 0)
@@ -207,14 +217,16 @@ int readSenseHatJoystick()
     struct input_event keyPress;
     int key = 0;
 
-    if(read(joystickFd,&keyPress, sizeof(keyPress)) == sizeof(keyPress)) {
+    while(read(joystickFd,&keyPress, sizeof(keyPress)) == sizeof(keyPress)) {
         
-        key = keyPress.code;
-        return key;
+        if (keyPress.type == EV_KEY && keyPress.value != 0){
+            key = keyPress.code;
+        }
+        
     }
-    else{
-        return 0;
-    }
+    
+    // defaults to 0 if while-loop fails
+    return key;
     
 }
 
@@ -223,9 +235,21 @@ int readSenseHatJoystick()
 // has changed the playfield
 void renderSenseHatMatrix(bool const playfieldChanged)
 {
-    // lag en color struct og incrementer gjennom ettersom formene plasseres
-    // 5 farger er sikkert nok
-    (void)playfieldChanged;
+    if (playfieldChanged == false) {
+    
+        return;
+
+    }
+    
+    else{
+
+        for (unsigned int y = 0; y < game.grid.y; y++){
+            for (unsigned int x = 0; x < game.grid.x; x++){
+                rpiSenseMem[y * game.grid.x + x] = game.playfield[y][x].colour;
+            }
+        }
+    }
+    
 }
 
 // The game logic uses only the following functions to interact with the playfield.
@@ -233,8 +257,13 @@ void renderSenseHatMatrix(bool const playfieldChanged)
 // adjust this game logic <> playfield interface
 
 static inline void newTile(coord const target)
-{
+{ 
     game.playfield[target.y][target.x].occupied = true;
+    // C arrays doesnt save their length so we divide using modulo (%) operator to always check the index bounds
+    game.playfield[target.y][target.x].colour = colours[colourIndex % (sizeof(colours) / sizeof(colours[0]))];
+    colourIndex++;
+    
+
 }
 
 static inline void copyTile(coord const to, coord const from)
