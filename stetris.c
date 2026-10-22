@@ -245,6 +245,9 @@ void renderSenseHatMatrix(bool const playfieldChanged)
 
         for (unsigned int y = 0; y < game.grid.y; y++){
             for (unsigned int x = 0; x < game.grid.x; x++){
+                // Playfield is a 2D-array but senseHAT LEDs is a long array of LEDs
+                // So y * game.grid.x is how me jump far enough into the array to appear as a 
+                // line shift physically on the LED matrix
                 rpiSenseMem[y * game.grid.x + x] = game.playfield[y][x].colour;
             }
         }
